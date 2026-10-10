@@ -227,7 +227,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if(document.getElementById("btnListaRapidaProductos")) document.getElementById("btnListaRapidaProductos").onclick = abrirListaRapidaProductos;
   if(document.getElementById("btnVolverCatalogo")) document.getElementById("btnVolverCatalogo").onclick = cerrarListaRapidaProductos;
   if(document.getElementById("buscarListaRapida")) document.getElementById("buscarListaRapida").addEventListener("input", renderizarListaRapidaProductos);
-  if(document.getElementById("cuerpoListaRapida")) document.getElementById("cuerpoListaRapida").addEventListener("click", guardarFilaListaRapida);
+  if(document.getElementById("cuerpoListaRapida")) document.getElementById("cuerpoListaRapida").addEventListener("focusout", guardarFilaListaRapida);
   const btnBorrarTodoCatalogo = document.getElementById("btnBorrarTodoCatalogo");
   if (btnBorrarTodoCatalogo) btnBorrarTodoCatalogo.onclick = async () => {
     if (!todasLasFundas.length) return alert("El catálogo ya está vacío.");
@@ -1586,47 +1586,65 @@ function renderizarListaRapidaProductos() {
     <td><input class="lr-venta" type="number" min="0" step="0.01" aria-label="Precio de venta" value="${Number(f.venta)||0}"></td>
     <td><input class="lr-mayorista" type="number" min="0" step="0.01" aria-label="Precio mayorista" value="${Number(f.mayorista)||0}"></td>
     <td><input class="lr-stock" type="text" aria-label="Stock por modelo" value="${escapeListaRapida(stockAFormatoListaRapida(f))}" placeholder="Único:10, Negro:5"></td>
-    <td><button type="button" class="lr-guardar">Guardar</button></td></tr>`).join("");
+    <td><span class="lr-estado" aria-live="polite">—</span></td></tr>`).join("");
 }
 async function guardarFilaListaRapida(evento) {
-  const boton = evento.target.closest(".lr-guardar");
-  if (!boton) return;
+  const campo = evento.target.closest(".lr-costo, .lr-venta, .lr-mayorista, .lr-stock");
+  if (!campo) return;
+  const fila = campo.closest("tr[data-product-id]");
+  if (!fila || fila.dataset.guardando === "true") return;
   if (!esAdmin) return alert("Solo administración puede modificar productos.");
-  const fila = boton.closest("tr[data-product-id]");
-  const id = fila?.dataset.productId;
+
+  // Normaliza importes como 06000 a 6000 al salir del campo.
+  for (const selector of [".lr-costo", ".lr-venta", ".lr-mayorista"]) {
+    const input = fila.querySelector(selector);
+    const valor = input.value.trim();
+    if (valor !== "" && Number.isFinite(Number(valor)) && Number(valor) >= 0) input.value = String(Number(valor));
+  }
+
+  const id = fila.dataset.productId;
   const original = todasLasFundas.find(f => f.id === id);
   if (!original) return alert("No se encontró el producto. Actualizá la página e intentá de nuevo.");
   const costo = Number(fila.querySelector(".lr-costo").value);
   const venta = Number(fila.querySelector(".lr-venta").value);
   const mayorista = Number(fila.querySelector(".lr-mayorista").value);
   const textoStock = fila.querySelector(".lr-stock").value.trim();
-  if ([costo, venta, mayorista].some(n => !Number.isFinite(n) || n < 0)) return alert("Los precios deben ser números iguales o mayores a cero.");
+  if ([costo, venta, mayorista].some(n => !Number.isFinite(n) || n < 0)) {
+    fila.querySelector(".lr-estado").textContent = "Revisá precios";
+    return;
+  }
   const stockPorModelo = [];
   if (textoStock) {
     for (const parte of textoStock.split(",")) {
       const separador = parte.lastIndexOf(":");
-      if (separador < 1) return alert(`Formato de stock incorrecto: “${parte}”. Usá Modelo:unidades.`);
+      if (separador < 1) { fila.querySelector(".lr-estado").textContent = "Formato de stock inválido"; return; }
       const modelo = parte.slice(0, separador).trim();
       const cantidadTexto = parte.slice(separador + 1).trim();
       const cantidad = Number(cantidadTexto);
-      if (!modelo || cantidadTexto === "" || !Number.isInteger(cantidad) || cantidad < 0) return alert(`Stock inválido en “${parte}”. Las unidades deben ser enteros iguales o mayores a cero.`);
+      if (!modelo || cantidadTexto === "" || !Number.isInteger(cantidad) || cantidad < 0) {
+        fila.querySelector(".lr-estado").textContent = "Revisá unidades"; return;
+      }
       stockPorModelo.push({ modelo, stock: cantidad });
     }
   }
-  if (!stockPorModelo.length) return alert("Ingresá al menos un modelo y su cantidad, por ejemplo: Único:10.");
-  boton.disabled = true; boton.textContent = "Guardando…";
+  if (!stockPorModelo.length) { fila.querySelector(".lr-estado").textContent = "Ingresá unidades"; return; }
+
+  fila.dataset.guardando = "true";
+  const estado = fila.querySelector(".lr-estado");
+  estado.textContent = "Guardando…";
   try {
     await updateDoc(doc(db, "fundas", id), { costo, venta, mayorista, stockPorModelo, sinModelo: stockPorModelo.length <= 1 });
     const idx = todasLasFundas.findIndex(f => f.id === id);
     if (idx >= 0) todasLasFundas[idx] = { ...todasLasFundas[idx], costo, venta, mayorista, stockPorModelo, sinModelo: stockPorModelo.length <= 1 };
-    boton.textContent = "Guardado ✓";
-    boton.classList.add("lr-guardado");
+    estado.textContent = "Guardado ✓";
+    estado.classList.add("lr-guardado");
     actualizarDatalistAsistente(); actualizarDatalistBuscador(); filtrarFundas();
-    setTimeout(() => { if (boton.isConnected) { boton.textContent = "Guardar"; boton.classList.remove("lr-guardado"); boton.disabled = false; } }, 1300);
   } catch (error) {
     console.error("No se pudo guardar la edición rápida", error);
+    estado.textContent = "Error al guardar";
     alert("No se pudieron guardar los cambios. Revisá tu conexión y los permisos de Firebase.");
-    boton.disabled = false; boton.textContent = "Guardar";
+  } finally {
+    fila.dataset.guardando = "false";
   }
 }
 

@@ -846,3 +846,7 @@ button:active {
 .lista-rapida-vacio{text-align:center;padding:28px!important;color:#777}
 .lista-rapida-ayuda{margin-top:12px}
 .lista-rapida-ayuda code{background:#f2f2f7;border-radius:4px;padding:2px 5px}
+
+/* Estado de guardado automático de la lista rápida */
+.lr-estado { display:inline-block; min-width:100px; font-size:12px; color:var(--texto-secundario, #888); white-space:nowrap; }
+.lr-estado.lr-guardado { color:#21a366; font-weight:600; }
