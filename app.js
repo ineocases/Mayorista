@@ -223,6 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if(document.getElementById("btnGuardarCategoria")) document.getElementById("btnGuardarCategoria").onclick = crearNuevaCategoria;
 
   if(document.getElementById("btnImportarExcel")) document.getElementById("btnImportarExcel").onclick = () => document.getElementById("inputExcel").click();
+  if(document.getElementById("btnSincronizarFotosTN")) document.getElementById("btnSincronizarFotosTN").onclick = sincronizarFotosTiendanube;
   const btnBorrarTodoCatalogo = document.getElementById("btnBorrarTodoCatalogo");
   if (btnBorrarTodoCatalogo) btnBorrarTodoCatalogo.onclick = async () => {
     if (!todasLasFundas.length) return alert("El catálogo ya está vacío.");
@@ -541,6 +542,7 @@ onAuthStateChanged(auth, async (user) => {
       const btnCambiarRol = document.getElementById("btnCambiarRol");
       const btnGestorCategorias = document.getElementById("btnGestorCategorias");
       const btnImportarExcel = document.getElementById("btnImportarExcel");
+      const btnSincronizarFotosTN = document.getElementById("btnSincronizarFotosTN");
       const btnVerClientes = document.getElementById("btnVerClientes");
       const btnBanner = document.getElementById("btnAbrirBanner");
       const btnDesc = document.getElementById("btnAbrirDescuentos");
@@ -549,6 +551,7 @@ onAuthStateChanged(auth, async (user) => {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "📱 Cambiar a Cliente";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "inline-block";
         if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";
+        if(btnSincronizarFotosTN) btnSincronizarFotosTN.style.display = "inline-block";
         if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "inline-block";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "inline-block"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "flex";
@@ -560,6 +563,7 @@ onAuthStateChanged(auth, async (user) => {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "🔐 Cambiar a Admin";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "none";
         if(btnImportarExcel) btnImportarExcel.style.display = "none";
+        if(btnSincronizarFotosTN) btnSincronizarFotosTN.style.display = "none";
         if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "none";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "none"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "none";
@@ -1013,6 +1017,49 @@ function procesarImportacionExcel(evento) {
   alert(`Importación completada.\nNuevos: ${creados}\nActualizados: ${actualizados}\nNo se eliminaron productos ni fotos.`); evento.target.value=''; await cargarFundas();
  }catch(err){console.error('Error importando Tiendanube',err);alert('No se pudo leer el archivo. Usá el CSV exportado desde Productos > Exportar e importar.');}};
  if(/\.csv$/i.test(archivo.name))lector.readAsArrayBuffer(archivo);else lector.readAsArrayBuffer(archivo);
+}
+
+
+
+// 🖼️ Sincronización segura de imágenes: solo actualiza fotos/galería, nunca stock ni precios.
+async function sincronizarFotosTiendanube() {
+  const boton = document.getElementById("btnSincronizarFotosTN");
+  if (!esAdmin) return alert("Esta función está disponible solo para administración.");
+  if (!confirm("Se consultarán las fotos de Tiendanube y se mostrarán las coincidencias antes de guardar. No se modificarán stock ni precios. ¿Continuar?")) return;
+  boton.disabled = true; const textoOriginal = boton.textContent; boton.textContent = "Consultando Tiendanube…";
+  try {
+    const resp = await fetch("/api/tiendanube-products", { headers: { "Accept": "application/json" } });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Error HTTP ${resp.status}`);
+    const productosTN = payload.products || [];
+    if (!productosTN.length) return alert("Tiendanube no devolvió productos. Verificá los permisos y el token configurado en Vercel.");
+    const normal = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+    const matches = [], pendientes = [];
+    for (const tn of productosTN) {
+      const slug = normal(tn.handle); const nombre = normal(tn.name);
+      const local = todasLasFundas.find(x => (slug && normal(x.tiendanubeSlug || x.slug) === slug) || (nombre && normal(x.nombre) === nombre));
+      const urls = (tn.images || []).map(i => typeof i === "string" ? i : i.src).filter(u => typeof u === "string" && /^https:\/\//i.test(u));
+      if (local && urls.length) matches.push({ tn, local, urls });
+      else pendientes.push({ nombre: tn.name || "Producto sin nombre", motivo: !local ? "Sin coincidencia en Fundas Stock" : "Sin imágenes" });
+    }
+    const muestra = matches.slice(0, 12).map(m => `• ${m.tn.name}: ${m.urls.length} foto(s)`).join("\n");
+    const resumen = `Tiendanube: ${productosTN.length} productos\nCoincidencias con fotos: ${matches.length}\nPendientes/sin coincidencia: ${pendientes.length}\n\n${muestra || "No hay coincidencias para actualizar."}\n\n¿Actualizar únicamente las fotos de las ${matches.length} coincidencias?\nEl stock, precios, variantes y demás campos se conservarán.`;
+    if (!matches.length || !confirm(resumen)) { if (pendientes.length) console.info("Productos pendientes de vincular:", pendientes); return; }
+    let actualizados = 0, errores = 0;
+    for (const m of matches) {
+      try {
+        const fotosNuevas = m.urls.map(url => ({ url, original: url }));
+        await updateDoc(doc(db, "fundas", m.local.id), { fotos: fotosNuevas, foto: m.urls[0] });
+        actualizados++;
+      } catch (e) { errores++; console.error("Error actualizando fotos de", m.tn.name, e); }
+    }
+    await cargarFundas();
+    alert(`Sincronización terminada.\nActualizados: ${actualizados}\nErrores: ${errores}\nPendientes sin coincidencia/fotos: ${pendientes.length}\n\nNo se modificaron stock ni precios.`);
+    if (pendientes.length) console.table(pendientes);
+  } catch (e) {
+    console.error("Error sincronizando imágenes de Tiendanube:", e);
+    alert(`No se pudo sincronizar: ${e.message}\n\nVerificá las variables de entorno de Vercel y el permiso read_products.`);
+  } finally { boton.disabled = false; boton.textContent = textoOriginal; }
 }
 
 // ==========================================================================

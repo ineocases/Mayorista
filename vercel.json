@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/tiendanube-products.js": {
+      "maxDuration": 60
+    }
+  }
+}
