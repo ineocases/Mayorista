@@ -224,6 +224,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if(document.getElementById("btnImportarExcel")) document.getElementById("btnImportarExcel").onclick = () => document.getElementById("inputExcel").click();
   if(document.getElementById("btnSincronizarFotosTN")) document.getElementById("btnSincronizarFotosTN").onclick = sincronizarFotosTiendanube;
+  if(document.getElementById("btnListaRapidaProductos")) document.getElementById("btnListaRapidaProductos").onclick = abrirListaRapidaProductos;
+  if(document.getElementById("btnVolverCatalogo")) document.getElementById("btnVolverCatalogo").onclick = cerrarListaRapidaProductos;
+  if(document.getElementById("buscarListaRapida")) document.getElementById("buscarListaRapida").addEventListener("input", renderizarListaRapidaProductos);
+  if(document.getElementById("cuerpoListaRapida")) document.getElementById("cuerpoListaRapida").addEventListener("click", guardarFilaListaRapida);
   const btnBorrarTodoCatalogo = document.getElementById("btnBorrarTodoCatalogo");
   if (btnBorrarTodoCatalogo) btnBorrarTodoCatalogo.onclick = async () => {
     if (!todasLasFundas.length) return alert("El catálogo ya está vacío.");
@@ -543,6 +547,7 @@ onAuthStateChanged(auth, async (user) => {
       const btnGestorCategorias = document.getElementById("btnGestorCategorias");
       const btnImportarExcel = document.getElementById("btnImportarExcel");
       const btnSincronizarFotosTN = document.getElementById("btnSincronizarFotosTN");
+      const btnListaRapidaProductos = document.getElementById("btnListaRapidaProductos");
       const btnVerClientes = document.getElementById("btnVerClientes");
       const btnBanner = document.getElementById("btnAbrirBanner");
       const btnDesc = document.getElementById("btnAbrirDescuentos");
@@ -552,6 +557,7 @@ onAuthStateChanged(auth, async (user) => {
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "inline-block";
         if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";
         if(btnSincronizarFotosTN) btnSincronizarFotosTN.style.display = "inline-block";
+        if(btnListaRapidaProductos) btnListaRapidaProductos.style.display = "inline-block";
         if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "inline-block";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "inline-block"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "flex";
@@ -564,6 +570,7 @@ onAuthStateChanged(auth, async (user) => {
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "none";
         if(btnImportarExcel) btnImportarExcel.style.display = "none";
         if(btnSincronizarFotosTN) btnSincronizarFotosTN.style.display = "none";
+        if(btnListaRapidaProductos) btnListaRapidaProductos.style.display = "none";
         if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "none";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "none"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "none";
@@ -1533,6 +1540,94 @@ function actualizarDatalistBuscador() {
   });
   
   datalist.innerHTML = Array.from(sugerencias).sort().map(texto => `<option value="${texto}"></option>`).join("");
+}
+
+// --- LISTA RÁPIDA DE PRODUCTOS (administración) ---
+function abrirListaRapidaProductos() {
+  if (!esAdmin) return alert("Esta función está disponible solo para administración.");
+  const panel = document.getElementById("panelListaRapida");
+  const catalogo = document.getElementById("fundas");
+  const filtros = document.getElementById("filtrosCategorias");
+  if (panel) panel.style.display = "block";
+  if (catalogo) catalogo.style.display = "none";
+  if (filtros) filtros.style.display = "none";
+  const btnNueva = document.getElementById("btnNuevaFunda"); if (btnNueva) btnNueva.style.display = "none";
+  renderizarListaRapidaProductos();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function cerrarListaRapidaProductos() {
+  const panel = document.getElementById("panelListaRapida");
+  const catalogo = document.getElementById("fundas");
+  const filtros = document.getElementById("filtrosCategorias");
+  if (panel) panel.style.display = "none";
+  if (catalogo) catalogo.style.display = "grid";
+  if (filtros) filtros.style.display = "";
+  const btnNueva = document.getElementById("btnNuevaFunda"); if (btnNueva && esAdmin) btnNueva.style.display = "inline-block";
+  filtrarFundas();
+}
+function escapeListaRapida(valor) {
+  return String(valor ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function stockAFormatoListaRapida(funda) {
+  const arr = Array.isArray(funda.stockPorModelo) ? funda.stockPorModelo : [];
+  return arr.map(v => `${String(v.modelo || "Único").replace(/[,:]/g, " ")}:${Math.max(0, Number(v.stock) || 0)}`).join(", ");
+}
+function renderizarListaRapidaProductos() {
+  const cuerpo = document.getElementById("cuerpoListaRapida");
+  if (!cuerpo) return;
+  const q = (document.getElementById("buscarListaRapida")?.value || "").trim().toLocaleLowerCase("es");
+  const lista = todasLasFundas.filter(f => [f.nombre, f.categoria, f.tiendanubeSlug, ...(Array.isArray(f.stockPorModelo) ? f.stockPorModelo.map(v => v.modelo) : [])].join(" ").toLocaleLowerCase("es").includes(q));
+  const contador = document.getElementById("contadorListaRapida");
+  if (contador) contador.textContent = `${lista.length} de ${todasLasFundas.length} productos`;
+  if (!lista.length) { cuerpo.innerHTML = '<tr><td colspan="6" class="lista-rapida-vacio">No se encontraron productos.</td></tr>'; return; }
+  cuerpo.innerHTML = lista.map(f => `<tr data-product-id="${escapeListaRapida(f.id)}">
+    <td class="lista-rapida-producto"><strong>${escapeListaRapida(f.nombre || "Sin nombre")}</strong><small>${escapeListaRapida(f.categoria || "Sin categoría")}</small></td>
+    <td><input class="lr-costo" type="number" min="0" step="0.01" aria-label="Costo" value="${Number(f.costo)||0}"></td>
+    <td><input class="lr-venta" type="number" min="0" step="0.01" aria-label="Precio de venta" value="${Number(f.venta)||0}"></td>
+    <td><input class="lr-mayorista" type="number" min="0" step="0.01" aria-label="Precio mayorista" value="${Number(f.mayorista)||0}"></td>
+    <td><input class="lr-stock" type="text" aria-label="Stock por modelo" value="${escapeListaRapida(stockAFormatoListaRapida(f))}" placeholder="Único:10, Negro:5"></td>
+    <td><button type="button" class="lr-guardar">Guardar</button></td></tr>`).join("");
+}
+async function guardarFilaListaRapida(evento) {
+  const boton = evento.target.closest(".lr-guardar");
+  if (!boton) return;
+  if (!esAdmin) return alert("Solo administración puede modificar productos.");
+  const fila = boton.closest("tr[data-product-id]");
+  const id = fila?.dataset.productId;
+  const original = todasLasFundas.find(f => f.id === id);
+  if (!original) return alert("No se encontró el producto. Actualizá la página e intentá de nuevo.");
+  const costo = Number(fila.querySelector(".lr-costo").value);
+  const venta = Number(fila.querySelector(".lr-venta").value);
+  const mayorista = Number(fila.querySelector(".lr-mayorista").value);
+  const textoStock = fila.querySelector(".lr-stock").value.trim();
+  if ([costo, venta, mayorista].some(n => !Number.isFinite(n) || n < 0)) return alert("Los precios deben ser números iguales o mayores a cero.");
+  const stockPorModelo = [];
+  if (textoStock) {
+    for (const parte of textoStock.split(",")) {
+      const separador = parte.lastIndexOf(":");
+      if (separador < 1) return alert(`Formato de stock incorrecto: “${parte}”. Usá Modelo:unidades.`);
+      const modelo = parte.slice(0, separador).trim();
+      const cantidadTexto = parte.slice(separador + 1).trim();
+      const cantidad = Number(cantidadTexto);
+      if (!modelo || cantidadTexto === "" || !Number.isInteger(cantidad) || cantidad < 0) return alert(`Stock inválido en “${parte}”. Las unidades deben ser enteros iguales o mayores a cero.`);
+      stockPorModelo.push({ modelo, stock: cantidad });
+    }
+  }
+  if (!stockPorModelo.length) return alert("Ingresá al menos un modelo y su cantidad, por ejemplo: Único:10.");
+  boton.disabled = true; boton.textContent = "Guardando…";
+  try {
+    await updateDoc(doc(db, "fundas", id), { costo, venta, mayorista, stockPorModelo, sinModelo: stockPorModelo.length <= 1 });
+    const idx = todasLasFundas.findIndex(f => f.id === id);
+    if (idx >= 0) todasLasFundas[idx] = { ...todasLasFundas[idx], costo, venta, mayorista, stockPorModelo, sinModelo: stockPorModelo.length <= 1 };
+    boton.textContent = "Guardado ✓";
+    boton.classList.add("lr-guardado");
+    actualizarDatalistAsistente(); actualizarDatalistBuscador(); filtrarFundas();
+    setTimeout(() => { if (boton.isConnected) { boton.textContent = "Guardar"; boton.classList.remove("lr-guardado"); boton.disabled = false; } }, 1300);
+  } catch (error) {
+    console.error("No se pudo guardar la edición rápida", error);
+    alert("No se pudieron guardar los cambios. Revisá tu conexión y los permisos de Firebase.");
+    boton.disabled = false; boton.textContent = "Guardar";
+  }
 }
 
 // --- CRUD DE FUNDAS ---

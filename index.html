@@ -105,6 +105,7 @@
       
       <button id="btnBorrarTodoCatalogo" style="background:#b42318;color:#fff;font-weight:700;white-space:nowrap;display:none;">🗑️ Borrar todo el catálogo</button>\n      <button id="btnImportarExcel" style="background: #28a745; white-space: nowrap; display: none;">📥 Importar Excel</button>
       <button id="btnSincronizarFotosTN" style="background:#1769aa;color:#fff;white-space:nowrap;display:none;">🖼️ Sincronizar fotos TN</button>
+      <button id="btnListaRapidaProductos" style="background:#5b45d5;color:#fff;white-space:nowrap;display:none;">📋 Lista rápida</button>
       <input type="file" id="inputExcel" accept=".xlsx, .xls, .csv" style="display: none;">
     </div>
 
@@ -300,6 +301,23 @@
       <div id="listaClientesRender"></div>
     </div>
 
+    <section id="panelListaRapida" style="display:none;">
+      <div class="lista-rapida-header">
+        <div><h2>📋 Lista rápida de productos</h2><p>Modificá precios y stock sin abrir cada ficha. Los cambios se guardan en Firebase.</p></div>
+        <button id="btnVolverCatalogo" class="btn-secundario" type="button">← Volver al catálogo</button>
+      </div>
+      <div class="lista-rapida-tools">
+        <input id="buscarListaRapida" type="search" placeholder="Buscar por producto, categoría o modelo...">
+        <span id="contadorListaRapida"></span>
+      </div>
+      <div class="lista-rapida-scroll">
+        <table class="tabla-lista-rapida">
+          <thead><tr><th>Producto</th><th>Costo ($)</th><th>Venta ($)</th><th>Mayorista ($)</th><th>Stock por modelo</th><th>Acción</th></tr></thead>
+          <tbody id="cuerpoListaRapida"></tbody>
+        </table>
+      </div>
+      <p class="lista-rapida-ayuda">En “Stock por modelo”, usá el formato <code>Modelo:unidades, Otro modelo:unidades</code>. Para un producto sin variantes, usá <code>Único:10</code>.</p>
+    </section>
     <div id="fundas"></div>
 
     <button id="btnAsistente" class="fab-asistente">💬 Asistente de Ventas</button>

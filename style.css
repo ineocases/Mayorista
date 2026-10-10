@@ -821,3 +821,28 @@ button:active {
 .galeria-hide-scrollbar::-webkit-scrollbar { 
     display: none; 
 }
+
+/* Lista rápida de productos para administración */
+.lista-rapida-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:8px 0 18px;flex-wrap:wrap}
+.lista-rapida-header h2{margin:0 0 6px;font-size:24px}
+.lista-rapida-header p,.lista-rapida-ayuda{margin:0;color:#6e6e73;font-size:13px;line-height:1.5}
+.lista-rapida-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.lista-rapida-tools input{flex:1;min-width:220px;max-width:520px;margin:0}
+.lista-rapida-tools span{font-size:13px;color:#6e6e73;font-weight:600}
+.lista-rapida-scroll{width:100%;overflow:auto;border:1px solid #e1e1e6;border-radius:12px;background:#fff}
+.tabla-lista-rapida{width:100%;min-width:970px;border-collapse:separate;border-spacing:0;font-size:13px}
+.tabla-lista-rapida th{position:sticky;top:0;background:#f5f5f7;color:#45454a;text-align:left;font-size:12px;padding:12px 10px;white-space:nowrap;border-bottom:1px solid #e1e1e6}
+.tabla-lista-rapida td{padding:9px 10px;border-bottom:1px solid #eee;vertical-align:middle}
+.tabla-lista-rapida tbody tr:last-child td{border-bottom:0}
+.tabla-lista-rapida tbody tr:hover{background:#fafaff}
+.tabla-lista-rapida td input{width:100%;min-width:95px;box-sizing:border-box;padding:9px 8px;border:1px solid #d2d2d7;border-radius:8px;margin:0;font-size:13px;background:#fff;color:#1d1d1f}
+.tabla-lista-rapida td .lr-stock{min-width:230px}
+.lista-rapida-producto{min-width:190px;max-width:260px}
+.lista-rapida-producto strong,.lista-rapida-producto small{display:block;overflow-wrap:anywhere}
+.lista-rapida-producto small{color:#777;font-size:11px;margin-top:4px}
+.tabla-lista-rapida .lr-guardar{padding:9px 12px;white-space:nowrap;background:#5b45d5;color:#fff;border:0;border-radius:8px;font-weight:700;cursor:pointer}
+.tabla-lista-rapida .lr-guardar:disabled{opacity:.65;cursor:wait}
+.tabla-lista-rapida .lr-guardar.lr-guardado{background:#16834a}
+.lista-rapida-vacio{text-align:center;padding:28px!important;color:#777}
+.lista-rapida-ayuda{margin-top:12px}
+.lista-rapida-ayuda code{background:#f2f2f7;border-radius:4px;padding:2px 5px}
