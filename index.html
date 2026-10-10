@@ -113,6 +113,7 @@
     <div id="sidebarMenu" class="sidebar">
       <button id="btnCambiarRol" class="sidebar-btn sidebar-btn-top">🔄 Cambiar de modo</button>
       <button id="btnGestorCategorias" class="sidebar-btn" style="display: none;">📁 Administrar Categorías</button>
+      <button id="btnGestorCatalogo" class="sidebar-btn" style="display: none;">🛍️ Sincronizar Tiendanube / Fotos</button>
       <button id="btnVerClientes" class="sidebar-btn" style="display: none;">👥 Ver Clientes Registrados</button>
       <button id="btnAbrirBanner" class="sidebar-btn" style="display: none;">Cambiar Banner Principal</button>
       <button id="btnAbrirDescuentos" class="sidebar-btn" style="display: none;">Configurar Descuentos</button>
@@ -349,6 +350,34 @@
 <div id="contenedorBannerTienda" style="display: none; width: 100%; margin-bottom: 20px; border-radius: 12px; overflow: hidden;">
   <img id="imgBannerTienda" src="" style="width: 100%; height: auto; display: block; object-fit: cover;">
 </div>
+
+
+  <div id="modalGestorCatalogo" class="modal-admin-overlay" style="display:none; z-index:1200;">
+    <div class="modal-admin-content" style="width:min(900px,96vw); max-width:900px; max-height:90vh; overflow:auto;">
+      <div class="modal-admin-header"><h3>🛍️ Administrador de catálogo</h3><p>Importá el CSV de Tiendanube para agregar productos nuevos y actualizar los existentes. Las fotos actuales se conservan.</p></div>
+      <div class="modal-admin-body">
+        <section style="padding:14px; border:1px solid #d2d2d7; border-radius:12px; margin-bottom:16px;">
+          <h4 style="margin:0 0 8px;">1. Sincronizar catálogo</h4>
+          <label for="inputCatalogoTiendanube">Archivo CSV exportado desde Tiendanube</label>
+          <input id="inputCatalogoTiendanube" type="file" accept=".csv,.xlsx,.xls" style="margin-bottom:8px;">
+          <p style="font-size:13px;color:#6e6e73;">Se agrupan las variantes del mismo producto. La coincidencia se realiza por identificador de Tiendanube y, como alternativa, por nombre. No se borran productos que no aparezcan en el archivo.</p>
+          <div id="resumenImportacionCatalogo" style="font-size:14px; margin:10px 0;"></div>
+          <button id="btnAplicarImportacionCatalogo" class="btn-admin-submit" disabled>Actualizar catálogo</button>
+        </section>
+        <section style="padding:14px; border:1px solid #d2d2d7; border-radius:12px; margin-bottom:16px;">
+          <h4 style="margin:0 0 8px;">2. Asignar fotos manualmente</h4>
+          <label for="selectProductoFotos">Elegí el producto</label>
+          <select id="selectProductoFotos" style="width:100%; margin-bottom:10px;"><option value="">Seleccioná un producto…</option></select>
+          <label for="inputFotosCatalogo">Elegí una o varias imágenes</label>
+          <input id="inputFotosCatalogo" type="file" accept="image/*" multiple style="margin-bottom:8px;">
+          <p style="font-size:13px;color:#6e6e73;">Las imágenes se agregan a la galería del producto seleccionado. Se suben a ImgBB, igual que las fotos del formulario actual.</p>
+          <div id="previewFotosCatalogo" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;"></div>
+          <button id="btnGuardarFotosCatalogo" class="btn-admin-submit" disabled>Subir y guardar fotos</button>
+        </section>
+        <div class="modal-admin-buttons"><button id="btnCerrarGestorCatalogo" class="btn-secundario" style="width:100%;">Cerrar</button></div>
+      </div>
+    </div>
+  </div>
 
 <div id="modalBanner" style="display:none;" class="modal-admin-overlay">
   <div class="modal-content">

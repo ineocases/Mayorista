@@ -59,7 +59,9 @@ imgFondoEstudio.src = "fondo-estudio.png";
 // Variables globales para Descuentos Avanzados
 let descuentoGlobal = 0;
 let tipoDescuento = "global"; 
-let productosDescuento = []; 
+let productosDescuento = [];
+let filasCatalogoPendientes = [];
+let archivosFotosCatalogo = []; 
 
 // Variables de control para Banners Duales y Seguridad
 let urlBannerGeneral = "";
@@ -221,6 +223,14 @@ document.addEventListener("DOMContentLoaded", () => {
   if(document.getElementById("btnGestorCategorias")) document.getElementById("btnGestorCategorias").onclick = abrirModalCategorias;
   if(document.getElementById("btnCerrarCategorias")) document.getElementById("btnCerrarCategorias").onclick = cerrarModalCategorias;
   if(document.getElementById("btnGuardarCategoria")) document.getElementById("btnGuardarCategoria").onclick = crearNuevaCategoria;
+
+  if(document.getElementById("btnGestorCatalogo")) document.getElementById("btnGestorCatalogo").onclick = abrirGestorCatalogo;
+  if(document.getElementById("btnCerrarGestorCatalogo")) document.getElementById("btnCerrarGestorCatalogo").onclick = () => { document.getElementById("modalGestorCatalogo").style.display = "none"; };
+  if(document.getElementById("inputCatalogoTiendanube")) document.getElementById("inputCatalogoTiendanube").onchange = prepararImportacionCatalogo;
+  if(document.getElementById("btnAplicarImportacionCatalogo")) document.getElementById("btnAplicarImportacionCatalogo").onclick = aplicarImportacionCatalogo;
+  if(document.getElementById("selectProductoFotos")) document.getElementById("selectProductoFotos").onchange = () => { archivosFotosCatalogo = []; document.getElementById("inputFotosCatalogo").value = ""; document.getElementById("btnGuardarFotosCatalogo").disabled = true; document.getElementById("previewFotosCatalogo").innerHTML = ""; };
+  if(document.getElementById("inputFotosCatalogo")) document.getElementById("inputFotosCatalogo").onchange = previsualizarFotosCatalogo;
+  if(document.getElementById("btnGuardarFotosCatalogo")) document.getElementById("btnGuardarFotosCatalogo").onclick = guardarFotosCatalogo;
 
   if(document.getElementById("btnImportarExcel")) document.getElementById("btnImportarExcel").onclick = () => document.getElementById("inputExcel").click();
   if(document.getElementById("inputExcel")) document.getElementById("inputExcel").onchange = procesarImportacionExcel;
@@ -522,6 +532,7 @@ onAuthStateChanged(auth, async (user) => {
       const btnVerClientes = document.getElementById("btnVerClientes");
       const btnBanner = document.getElementById("btnAbrirBanner");
       const btnDesc = document.getElementById("btnAbrirDescuentos");
+      const btnCatalogo = document.getElementById("btnGestorCatalogo");
 
       if (esAdmin) {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "📱 Cambiar a Cliente";
@@ -532,6 +543,7 @@ onAuthStateChanged(auth, async (user) => {
         if(btnVerClientes) btnVerClientes.style.display = "block";
         if(btnBanner) btnBanner.style.display = "block";
         if(btnDesc) btnDesc.style.display = "block";
+        if(btnCatalogo) btnCatalogo.style.display = "block";
       } else {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "🔐 Cambiar a Admin";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "none";
@@ -541,6 +553,7 @@ onAuthStateChanged(auth, async (user) => {
         if(btnVerClientes) btnVerClientes.style.display = "none";
         if(btnBanner) btnBanner.style.display = "none";
         if(btnDesc) btnDesc.style.display = "none";
+        if(btnCatalogo) btnCatalogo.style.display = "none";
         
         solicitarDatosCliente();
       }
@@ -917,6 +930,123 @@ function renderizarListaCrudCategorias() {
       eliminarCategoria(this.getAttribute("data-id"), this.getAttribute("data-nombre"));
     };
   });
+}
+
+// --- ADMINISTRADOR DE CATÁLOGO TIENDANUBE Y FOTOS ---
+function abrirGestorCatalogo() {
+  if (!esAdmin) return alert("Esta herramienta requiere una sesión del personal de trabajo.");
+  document.getElementById("modalGestorCatalogo").style.display = "flex";
+  const select = document.getElementById("selectProductoFotos");
+  select.innerHTML = '<option value="">Seleccioná un producto…</option>' + [...todasLasFundas].sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"", "es")).map(f => `<option value="${f.id}">${escaparHTML(f.nombre || "Producto sin nombre")}</option>`).join("");
+  document.getElementById("resumenImportacionCatalogo").textContent = "Elegí el archivo para analizarlo antes de aplicar cambios.";
+}
+function escaparHTML(valor) { return String(valor ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function normalizarTextoCatalogo(valor) { return String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g," "); }
+function numeroCatalogo(valor) {
+  if (typeof valor === "number") return valor;
+  let s = String(valor ?? "").trim().replace(/\s/g, "").replace(/\$/g, "");
+  if (!s) return 0;
+  if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g,"").replace(",",".") : s.replace(/,/g,"");
+  else if (s.includes(",")) s = s.replace(",", ".");
+  const n = Number(s); return Number.isFinite(n) ? n : 0;
+}
+function valorColumna(fila, ...nombres) {
+  const claves = Object.keys(fila);
+  for (const nombre of nombres) {
+    const buscada = normalizarTextoCatalogo(nombre);
+    const clave = claves.find(k => normalizarTextoCatalogo(k.replace(/^\uFEFF/, "").replace(/^"|"$/g,"")) === buscada);
+    if (clave !== undefined) return fila[clave];
+  }
+  return "";
+}
+async function prepararImportacionCatalogo(evento) {
+  const archivo = evento.target.files?.[0];
+  filasCatalogoPendientes = [];
+  const boton = document.getElementById("btnAplicarImportacionCatalogo"); boton.disabled = true;
+  const resumen = document.getElementById("resumenImportacionCatalogo");
+  if (!archivo) return;
+  try {
+    const bytes = new Uint8Array(await archivo.arrayBuffer());
+    const libro = XLSX.read(bytes, {type:"array", raw:false});
+    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const filas = XLSX.utils.sheet_to_json(hoja, {defval:"", raw:false});
+    if (!filas.length) throw new Error("El archivo no contiene filas de productos.");
+    const agrupados = new Map();
+    for (const fila of filas) {
+      const nombre = String(valorColumna(fila,"Nombre","Nombre del producto","Product name") || "").trim();
+      if (!nombre) continue;
+      const urlId = String(valorColumna(fila,"Identificador de URL","URL identifier","Identificador") || "").trim();
+      const clave = normalizarTextoCatalogo(urlId || nombre);
+      const modelo = [valorColumna(fila,"Valor de propiedad 1"),valorColumna(fila,"Valor de propiedad 2"),valorColumna(fila,"Valor de propiedad 3")].map(v=>String(v||"").trim()).filter(Boolean).join(" / ") || "Único";
+      const stock = Math.max(0, Math.floor(numeroCatalogo(valorColumna(fila,"Stock","Cantidad"))));
+      if (!agrupados.has(clave)) {
+        agrupados.set(clave, {tiendanubeId:urlId, nombre, categoria:String(valorColumna(fila,"Categorías","Categoria","Categoría")||"Varios").split(",")[0].trim()||"Varios", costo:numeroCatalogo(valorColumna(fila,"Costo","Cost")), venta:numeroCatalogo(valorColumna(fila,"Precio","Price")), sku:String(valorColumna(fila,"SKU")||"").trim(), stockPorModelo:[], _clave:clave});
+      }
+      const prod = agrupados.get(clave);
+      const existenteVariante = prod.stockPorModelo.find(v=>normalizarTextoCatalogo(v.modelo)===normalizarTextoCatalogo(modelo));
+      if (existenteVariante) existenteVariante.stock += stock; else prod.stockPorModelo.push({modelo, stock});
+      if (!prod.sku) prod.sku = String(valorColumna(fila,"SKU")||"").trim();
+    }
+    filasCatalogoPendientes = [...agrupados.values()];
+    if (!filasCatalogoPendientes.length) throw new Error("No se encontraron productos con nombre. Verificá que sea el CSV original de Tiendanube.");
+    let nuevos=0, actualizar=0;
+    for (const prod of filasCatalogoPendientes) {
+      const match = todasLasFundas.find(f => (prod.tiendanubeId && f.tiendanubeId && normalizarTextoCatalogo(f.tiendanubeId)===normalizarTextoCatalogo(prod.tiendanubeId)) || normalizarTextoCatalogo(f.nombre)===normalizarTextoCatalogo(prod.nombre));
+      if (match) actualizar++; else nuevos++;
+    }
+    resumen.innerHTML = `<strong>Archivo analizado correctamente</strong><br>${filas.length} filas de Tiendanube agrupadas en ${filasCatalogoPendientes.length} productos.<br>🆕 ${nuevos} productos nuevos · 🔄 ${actualizar} productos que se actualizarán.<br><span style="color:#6e6e73">No se eliminarán productos. Las fotos existentes se mantienen. Revisá el resumen antes de confirmar.</span>`;
+    boton.disabled = false;
+  } catch (error) { console.error(error); resumen.textContent = "No se pudo leer el archivo: " + error.message; alert("No pude procesar el archivo. Exportalo nuevamente desde Tiendanube en formato CSV o Excel."); }
+}
+async function aplicarImportacionCatalogo() {
+  if (!esAdmin || !filasCatalogoPendientes.length) return;
+  const boton = document.getElementById("btnAplicarImportacionCatalogo");
+  if (!confirm(`Se van a sincronizar ${filasCatalogoPendientes.length} productos con la base actual. Se conservan fotos y productos ausentes del archivo. ¿Continuar?`)) return;
+  boton.disabled = true; const texto = boton.textContent; let creados=0, actualizados=0, errores=0;
+  try {
+    for (let i=0;i<filasCatalogoPendientes.length;i++) {
+      const prod = filasCatalogoPendientes[i]; boton.textContent = `Procesando ${i+1}/${filasCatalogoPendientes.length}…`;
+      const match = todasLasFundas.find(f => (prod.tiendanubeId && f.tiendanubeId && normalizarTextoCatalogo(f.tiendanubeId)===normalizarTextoCatalogo(prod.tiendanubeId)) || normalizarTextoCatalogo(f.nombre)===normalizarTextoCatalogo(prod.nombre));
+      const payload = {nombre:prod.nombre, categoria:prod.categoria, costo:prod.costo, venta:prod.venta, stockPorModelo:prod.stockPorModelo, tiendanubeId:prod.tiendanubeId || "", sku:prod.sku || "", actualizadoDesdeTiendanube:new Date().toISOString()};
+      try {
+        if (match) { await updateDoc(doc(db,"fundas",match.id), payload); actualizados++; }
+        else { await addDoc(collection(db,"fundas"), {...payload, mayorista:0, fotos:[], foto:"", fotoTransparente:"", sinModelo:prod.stockPorModelo.length===1 && prod.stockPorModelo[0].modelo==="Único", orden:todasLasFundas.length+creados}); creados++; }
+      } catch(e) { console.error("Error sincronizando",prod.nombre,e); errores++; }
+    }
+    filasCatalogoPendientes=[]; document.getElementById("inputCatalogoTiendanube").value="";
+    await cargarFundas();
+    document.getElementById("resumenImportacionCatalogo").textContent = `Sincronización terminada: ${creados} nuevos, ${actualizados} actualizados y ${errores} con error.`;
+    alert(`Sincronización terminada.\nNuevos: ${creados}\nActualizados: ${actualizados}\nErrores: ${errores}`);
+  } finally { boton.disabled=true; boton.textContent=texto; }
+}
+function previsualizarFotosCatalogo(evento) {
+  archivosFotosCatalogo = Array.from(evento.target.files || []).filter(f=>f.type.startsWith("image/"));
+  const cont = document.getElementById("previewFotosCatalogo"); cont.innerHTML="";
+  archivosFotosCatalogo.forEach(file=>{ const url=URL.createObjectURL(file); const img=document.createElement("img"); img.src=url; img.alt=file.name; img.title=file.name; img.style.cssText="width:76px;height:76px;object-fit:cover;border-radius:8px;border:1px solid #ddd"; cont.appendChild(img); });
+  document.getElementById("btnGuardarFotosCatalogo").disabled = !archivosFotosCatalogo.length || !document.getElementById("selectProductoFotos").value;
+}
+async function guardarFotosCatalogo() {
+  if (!esAdmin) return alert("Necesitás iniciar sesión como personal de trabajo.");
+  const id=document.getElementById("selectProductoFotos").value;
+  const producto=todasLasFundas.find(f=>f.id===id);
+  if (!producto || !archivosFotosCatalogo.length) return alert("Elegí un producto y al menos una foto.");
+  const boton=document.getElementById("btnGuardarFotosCatalogo"); boton.disabled=true;
+  const fotos=[...(producto.fotos||[])];
+  try {
+    for (let i=0;i<archivosFotosCatalogo.length;i++) {
+      boton.textContent=`Subiendo ${i+1}/${archivosFotosCatalogo.length}…`;
+      const fd=new FormData(); fd.append("image",archivosFotosCatalogo[i]);
+      const resp=await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,{method:"POST",body:fd});
+      const data=await resp.json(); if(!resp.ok || !data.success) throw new Error(data.error?.message || "ImgBB no pudo subir una imagen.");
+      fotos.push({url:data.data.url,urlTransparente:""});
+    }
+    await updateDoc(doc(db,"fundas",id),{fotos, foto:fotos[0]?.url||"", fotoTransparente:producto.fotoTransparente||""});
+    await cargarFundas();
+    document.getElementById("selectProductoFotos").value=id;
+    document.getElementById("inputFotosCatalogo").value=""; document.getElementById("previewFotosCatalogo").innerHTML=""; archivosFotosCatalogo=[];
+    alert(`Fotos guardadas en ${producto.nombre}.`);
+  } catch(e) { console.error(e); alert("No se pudieron guardar todas las fotos. Revisá la conexión y la configuración de ImgBB. " + e.message); }
+  finally { boton.disabled=true; boton.textContent="Subir y guardar fotos"; }
 }
 
 // 📥 PROCESADOR LECTOR DE EXCEL
