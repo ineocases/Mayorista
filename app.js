@@ -59,9 +59,7 @@ imgFondoEstudio.src = "fondo-estudio.png";
 // Variables globales para Descuentos Avanzados
 let descuentoGlobal = 0;
 let tipoDescuento = "global"; 
-let productosDescuento = [];
-let filasCatalogoPendientes = [];
-let archivosFotosCatalogo = []; 
+let productosDescuento = []; 
 
 // Variables de control para Banners Duales y Seguridad
 let urlBannerGeneral = "";
@@ -224,16 +222,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if(document.getElementById("btnCerrarCategorias")) document.getElementById("btnCerrarCategorias").onclick = cerrarModalCategorias;
   if(document.getElementById("btnGuardarCategoria")) document.getElementById("btnGuardarCategoria").onclick = crearNuevaCategoria;
 
-  if(document.getElementById("btnGestorCatalogo")) document.getElementById("btnGestorCatalogo").onclick = abrirGestorCatalogo;
-  if(document.getElementById("btnCerrarGestorCatalogo")) document.getElementById("btnCerrarGestorCatalogo").onclick = () => { document.getElementById("modalGestorCatalogo").style.display = "none"; };
-  if(document.getElementById("inputCatalogoTiendanube")) document.getElementById("inputCatalogoTiendanube").onchange = prepararImportacionCatalogo;
-  if(document.getElementById("btnAplicarImportacionCatalogo")) document.getElementById("btnAplicarImportacionCatalogo").onclick = aplicarImportacionCatalogo;
-  if(document.getElementById("selectProductoFotos")) document.getElementById("selectProductoFotos").onchange = () => { archivosFotosCatalogo = []; document.getElementById("inputFotosCatalogo").value = ""; document.getElementById("btnGuardarFotosCatalogo").disabled = true; document.getElementById("previewFotosCatalogo").innerHTML = ""; };
-  if(document.getElementById("inputFotosCatalogo")) document.getElementById("inputFotosCatalogo").onchange = previsualizarFotosCatalogo;
-  if(document.getElementById("btnGuardarFotosCatalogo")) document.getElementById("btnGuardarFotosCatalogo").onclick = guardarFotosCatalogo;
-
   if(document.getElementById("btnImportarExcel")) document.getElementById("btnImportarExcel").onclick = () => document.getElementById("inputExcel").click();
   if(document.getElementById("inputExcel")) document.getElementById("inputExcel").onchange = procesarImportacionExcel;
+  if(document.getElementById("btnBorrarSeleccionados")) document.getElementById("btnBorrarSeleccionados").onclick = borrarProductosSeleccionados;
 
   if(document.getElementById("btnAccionesIA")) document.getElementById("btnAccionesIA").onclick = toggleMenuMenuIA;
   if(document.getElementById("btnMenuFormatear")) document.getElementById("btnMenuFormatear").onclick = () => {
@@ -532,28 +523,27 @@ onAuthStateChanged(auth, async (user) => {
       const btnVerClientes = document.getElementById("btnVerClientes");
       const btnBanner = document.getElementById("btnAbrirBanner");
       const btnDesc = document.getElementById("btnAbrirDescuentos");
-      const btnCatalogo = document.getElementById("btnGestorCatalogo");
 
       if (esAdmin) {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "📱 Cambiar a Cliente";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "inline-block";
-        if(btnImportarExcel) btnImportarExcel.style.display = "inline-block"; 
+        if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";
+        const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "inline-block"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "flex";
         if(btnGestorCategorias) btnGestorCategorias.style.display = "block";
         if(btnVerClientes) btnVerClientes.style.display = "block";
         if(btnBanner) btnBanner.style.display = "block";
         if(btnDesc) btnDesc.style.display = "block";
-        if(btnCatalogo) btnCatalogo.style.display = "block";
       } else {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "🔐 Cambiar a Admin";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "none";
-        if(btnImportarExcel) btnImportarExcel.style.display = "none"; 
+        if(btnImportarExcel) btnImportarExcel.style.display = "none";
+        const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "none"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "none";
         if(btnGestorCategorias) btnGestorCategorias.style.display = "none";
         if(btnVerClientes) btnVerClientes.style.display = "none";
         if(btnBanner) btnBanner.style.display = "none";
         if(btnDesc) btnDesc.style.display = "none";
-        if(btnCatalogo) btnCatalogo.style.display = "none";
         
         solicitarDatosCliente();
       }
@@ -932,172 +922,57 @@ function renderizarListaCrudCategorias() {
   });
 }
 
-// --- ADMINISTRADOR DE CATÁLOGO TIENDANUBE Y FOTOS ---
-function abrirGestorCatalogo() {
-  if (!esAdmin) return alert("Esta herramienta requiere una sesión del personal de trabajo.");
-  document.getElementById("modalGestorCatalogo").style.display = "flex";
-  const select = document.getElementById("selectProductoFotos");
-  select.innerHTML = '<option value="">Seleccioná un producto…</option>' + [...todasLasFundas].sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"", "es")).map(f => `<option value="${f.id}">${escaparHTML(f.nombre || "Producto sin nombre")}</option>`).join("");
-  document.getElementById("resumenImportacionCatalogo").textContent = "Elegí el archivo para analizarlo antes de aplicar cambios.";
+// 📥 IMPORTADOR TIENDANUBE (CSV separado por ;, cabeceras oficiales y variantes)
+function normalizarClave(v) { return String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' '); }
+function numeroTiendanube(v) {
+  if (v === null || v === undefined || String(v).trim() === '' || String(v).trim() === '-') return 0;
+  let x=String(v).trim().replace(/\$/g,'').replace(/\s/g,'');
+  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(x)) x=x.replace(/\./g,'').replace(',','.');
+  else if (x.includes(',') && !x.includes('.')) x=x.replace(',','.');
+  else x=x.replace(/,/g,'');
+  const n=Number(x); return Number.isFinite(n)?n:0;
 }
-function escaparHTML(valor) { return String(valor ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function normalizarTextoCatalogo(valor) { return String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g," "); }
-function numeroCatalogo(valor) {
-  if (typeof valor === "number") return valor;
-  let s = String(valor ?? "").trim().replace(/\s/g, "").replace(/\$/g, "");
-  if (!s) return 0;
-  if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g,"").replace(",",".") : s.replace(/,/g,"");
-  else if (s.includes(",")) s = s.replace(",", ".");
-  const n = Number(s); return Number.isFinite(n) ? n : 0;
+function parseCSVTiendanube(texto) {
+  texto=texto.replace(/^\uFEFF/,''); const primera=texto.split(/\r?\n/,1)[0];
+  const sep=(primera.match(/;/g)||[]).length >= (primera.match(/,/g)||[]).length ? ';' : ',';
+  const rows=[]; let row=[], field='', quoted=false;
+  for(let i=0;i<texto.length;i++){ const c=texto[i]; if(c==='"'){ if(quoted && texto[i+1]==='"'){field+='"';i++;} else quoted=!quoted; }
+    else if(c===sep&&!quoted){row.push(field);field='';} else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&texto[i+1]==='\n')i++;row.push(field);if(row.some(x=>x.trim()))rows.push(row);row=[];field='';} else field+=c; }
+  if(field.length||row.length){row.push(field);rows.push(row);} if(!rows.length)return [];
+  const headers=rows.shift().map(normalizarClave);
+  return rows.map(cols=>Object.fromEntries(headers.map((h,i)=>[h,(cols[i]??'').trim()])));
 }
-function valorColumna(fila, ...nombres) {
-  const claves = Object.keys(fila);
-  for (const nombre of nombres) {
-    const buscada = normalizarTextoCatalogo(nombre);
-    const clave = claves.find(k => normalizarTextoCatalogo(k.replace(/^\uFEFF/, "").replace(/^"|"$/g,"")) === buscada);
-    if (clave !== undefined) return fila[clave];
-  }
-  return "";
-}
-async function prepararImportacionCatalogo(evento) {
-  const archivo = evento.target.files?.[0];
-  filasCatalogoPendientes = [];
-  const boton = document.getElementById("btnAplicarImportacionCatalogo"); boton.disabled = true;
-  const resumen = document.getElementById("resumenImportacionCatalogo");
-  if (!archivo) return;
-  try {
-    const bytes = new Uint8Array(await archivo.arrayBuffer());
-    const libro = XLSX.read(bytes, {type:"array", raw:false});
-    const hoja = libro.Sheets[libro.SheetNames[0]];
-    const filas = XLSX.utils.sheet_to_json(hoja, {defval:"", raw:false});
-    if (!filas.length) throw new Error("El archivo no contiene filas de productos.");
-    const agrupados = new Map();
-    for (const fila of filas) {
-      const nombre = String(valorColumna(fila,"Nombre","Nombre del producto","Product name") || "").trim();
-      if (!nombre) continue;
-      const urlId = String(valorColumna(fila,"Identificador de URL","URL identifier","Identificador") || "").trim();
-      const clave = normalizarTextoCatalogo(urlId || nombre);
-      const modelo = [valorColumna(fila,"Valor de propiedad 1"),valorColumna(fila,"Valor de propiedad 2"),valorColumna(fila,"Valor de propiedad 3")].map(v=>String(v||"").trim()).filter(Boolean).join(" / ") || "Único";
-      const stock = Math.max(0, Math.floor(numeroCatalogo(valorColumna(fila,"Stock","Cantidad"))));
-      if (!agrupados.has(clave)) {
-        agrupados.set(clave, {tiendanubeId:urlId, nombre, categoria:String(valorColumna(fila,"Categorías","Categoria","Categoría")||"Varios").split(",")[0].trim()||"Varios", costo:numeroCatalogo(valorColumna(fila,"Costo","Cost")), venta:numeroCatalogo(valorColumna(fila,"Precio","Price")), sku:String(valorColumna(fila,"SKU")||"").trim(), stockPorModelo:[], _clave:clave});
-      }
-      const prod = agrupados.get(clave);
-      const existenteVariante = prod.stockPorModelo.find(v=>normalizarTextoCatalogo(v.modelo)===normalizarTextoCatalogo(modelo));
-      if (existenteVariante) existenteVariante.stock += stock; else prod.stockPorModelo.push({modelo, stock});
-      if (!prod.sku) prod.sku = String(valorColumna(fila,"SKU")||"").trim();
-    }
-    filasCatalogoPendientes = [...agrupados.values()];
-    if (!filasCatalogoPendientes.length) throw new Error("No se encontraron productos con nombre. Verificá que sea el CSV original de Tiendanube.");
-    let nuevos=0, actualizar=0;
-    for (const prod of filasCatalogoPendientes) {
-      const match = todasLasFundas.find(f => (prod.tiendanubeId && f.tiendanubeId && normalizarTextoCatalogo(f.tiendanubeId)===normalizarTextoCatalogo(prod.tiendanubeId)) || normalizarTextoCatalogo(f.nombre)===normalizarTextoCatalogo(prod.nombre));
-      if (match) actualizar++; else nuevos++;
-    }
-    resumen.innerHTML = `<strong>Archivo analizado correctamente</strong><br>${filas.length} filas de Tiendanube agrupadas en ${filasCatalogoPendientes.length} productos.<br>🆕 ${nuevos} productos nuevos · 🔄 ${actualizar} productos que se actualizarán.<br><span style="color:#6e6e73">No se eliminarán productos. Las fotos existentes se mantienen. Revisá el resumen antes de confirmar.</span>`;
-    boton.disabled = false;
-  } catch (error) { console.error(error); resumen.textContent = "No se pudo leer el archivo: " + error.message; alert("No pude procesar el archivo. Exportalo nuevamente desde Tiendanube en formato CSV o Excel."); }
-}
-async function aplicarImportacionCatalogo() {
-  if (!esAdmin || !filasCatalogoPendientes.length) return;
-  const boton = document.getElementById("btnAplicarImportacionCatalogo");
-  if (!confirm(`Se van a sincronizar ${filasCatalogoPendientes.length} productos con la base actual. Se conservan fotos y productos ausentes del archivo. ¿Continuar?`)) return;
-  boton.disabled = true; const texto = boton.textContent; let creados=0, actualizados=0, errores=0;
-  try {
-    for (let i=0;i<filasCatalogoPendientes.length;i++) {
-      const prod = filasCatalogoPendientes[i]; boton.textContent = `Procesando ${i+1}/${filasCatalogoPendientes.length}…`;
-      const match = todasLasFundas.find(f => (prod.tiendanubeId && f.tiendanubeId && normalizarTextoCatalogo(f.tiendanubeId)===normalizarTextoCatalogo(prod.tiendanubeId)) || normalizarTextoCatalogo(f.nombre)===normalizarTextoCatalogo(prod.nombre));
-      const payload = {nombre:prod.nombre, categoria:prod.categoria, costo:prod.costo, venta:prod.venta, stockPorModelo:prod.stockPorModelo, tiendanubeId:prod.tiendanubeId || "", sku:prod.sku || "", actualizadoDesdeTiendanube:new Date().toISOString()};
-      try {
-        if (match) { await updateDoc(doc(db,"fundas",match.id), payload); actualizados++; }
-        else { await addDoc(collection(db,"fundas"), {...payload, mayorista:0, fotos:[], foto:"", fotoTransparente:"", sinModelo:prod.stockPorModelo.length===1 && prod.stockPorModelo[0].modelo==="Único", orden:todasLasFundas.length+creados}); creados++; }
-      } catch(e) { console.error("Error sincronizando",prod.nombre,e); errores++; }
-    }
-    filasCatalogoPendientes=[]; document.getElementById("inputCatalogoTiendanube").value="";
-    await cargarFundas();
-    document.getElementById("resumenImportacionCatalogo").textContent = `Sincronización terminada: ${creados} nuevos, ${actualizados} actualizados y ${errores} con error.`;
-    alert(`Sincronización terminada.\nNuevos: ${creados}\nActualizados: ${actualizados}\nErrores: ${errores}`);
-  } finally { boton.disabled=true; boton.textContent=texto; }
-}
-function previsualizarFotosCatalogo(evento) {
-  archivosFotosCatalogo = Array.from(evento.target.files || []).filter(f=>f.type.startsWith("image/"));
-  const cont = document.getElementById("previewFotosCatalogo"); cont.innerHTML="";
-  archivosFotosCatalogo.forEach(file=>{ const url=URL.createObjectURL(file); const img=document.createElement("img"); img.src=url; img.alt=file.name; img.title=file.name; img.style.cssText="width:76px;height:76px;object-fit:cover;border-radius:8px;border:1px solid #ddd"; cont.appendChild(img); });
-  document.getElementById("btnGuardarFotosCatalogo").disabled = !archivosFotosCatalogo.length || !document.getElementById("selectProductoFotos").value;
-}
-async function guardarFotosCatalogo() {
-  if (!esAdmin) return alert("Necesitás iniciar sesión como personal de trabajo.");
-  const id=document.getElementById("selectProductoFotos").value;
-  const producto=todasLasFundas.find(f=>f.id===id);
-  if (!producto || !archivosFotosCatalogo.length) return alert("Elegí un producto y al menos una foto.");
-  const boton=document.getElementById("btnGuardarFotosCatalogo"); boton.disabled=true;
-  const fotos=[...(producto.fotos||[])];
-  try {
-    for (let i=0;i<archivosFotosCatalogo.length;i++) {
-      boton.textContent=`Subiendo ${i+1}/${archivosFotosCatalogo.length}…`;
-      const fd=new FormData(); fd.append("image",archivosFotosCatalogo[i]);
-      const resp=await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,{method:"POST",body:fd});
-      const data=await resp.json(); if(!resp.ok || !data.success) throw new Error(data.error?.message || "ImgBB no pudo subir una imagen.");
-      fotos.push({url:data.data.url,urlTransparente:""});
-    }
-    await updateDoc(doc(db,"fundas",id),{fotos, foto:fotos[0]?.url||"", fotoTransparente:producto.fotoTransparente||""});
-    await cargarFundas();
-    document.getElementById("selectProductoFotos").value=id;
-    document.getElementById("inputFotosCatalogo").value=""; document.getElementById("previewFotosCatalogo").innerHTML=""; archivosFotosCatalogo=[];
-    alert(`Fotos guardadas en ${producto.nombre}.`);
-  } catch(e) { console.error(e); alert("No se pudieron guardar todas las fotos. Revisá la conexión y la configuración de ImgBB. " + e.message); }
-  finally { boton.disabled=true; boton.textContent="Subir y guardar fotos"; }
-}
-
-// 📥 PROCESADOR LECTOR DE EXCEL
+function campoCSV(f, ...nombres){ for(const n of nombres){const k=normalizarClave(n); if(f[k]!==undefined)return f[k];} return ''; }
 function procesarImportacionExcel(evento) {
-  const archivo = evento.target.files[0];
-  if (!archivo) return;
-  const lector = new FileReader();
-  lector.onload = async function(e) {
-    try {
-      const datos = new Uint8Array(e.target.result);
-      const libro = XLSX.read(datos, { type: 'array' });
-      const hoja = libro.Sheets[libro.SheetNames[0]];
-      const filas = XLSX.utils.sheet_to_json(hoja);
-      
-      if (filas.length === 0) return alert("El archivo de Excel se encuentra vacío.");
-
-      if (confirm(`Se detectaron ${filas.length} artículos en el archivo. ¿Proceder a importarlos masivamente?`)) {
-        let importados = 0;
-        for (const fila of filas) {
-          let stockPorModeloArray = [];
-          if (fila.StockPorModelo) {
-            stockPorModeloArray = String(fila.StockPorModelo).split(",")
-              .map(item => {
-                const [modelo, cantidad] = item.split(":");
-                return { modelo: modelo ? modelo.trim() : "Único", stock: cantidad ? Number(cantidad.trim()) : 0 };
-              }).filter(item => item.modelo !== "");
-          }
-
-          const nuevoProducto = {
-            nombre: fila.Nombre || "Artículo Sin Nombre",
-            categoria: fila.Categoria || "Varios",
-            costo: Number(fila.Costo || 0),
-            venta: Number(fila.Venta || 0),
-            mayorista: Number(fila.Mayorista || 0),
-            stockPorModelo: stockPorModeloArray,
-            fotos: [],
-            orden: todasLasFundas.length + importados 
-          };
-          await addDoc(collection(db, "fundas"), nuevoProducto);
-          importados++;
-        }
-        alert(`¡Listo! Se añadieron ${importados} productos correctamente. 🎉`);
-        document.getElementById("inputExcel").value = ""; 
-        cargarFundas(); 
-      }
-    } catch (error) {
-      console.error("Error al importar:", error);
-      alert("Hubo problemas al procesar las celdas del Excel. Valida los nombres de columnas.");
-    }
-  };
-  lector.readAsArrayBuffer(archivo);
+ const archivo=evento.target.files?.[0]; if(!archivo)return;
+ const lector=new FileReader(); lector.onload=async e=>{ try {
+  let filas;
+  if(/\.csv$/i.test(archivo.name)){ filas=parseCSVTiendanube(new TextDecoder('windows-1252').decode(e.target.result)); }
+  else { const libro=XLSX.read(new Uint8Array(e.target.result),{type:'array'}); filas=XLSX.utils.sheet_to_json(libro.Sheets[libro.SheetNames[0]],{defval:''}).map(o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[normalizarClave(k),String(v??'')]))); }
+  if(!filas.length) return alert('El archivo no contiene filas de productos.');
+  const grupos=new Map();
+  for(const f of filas){ const slug=campoCSV(f,'Identificador de URL','URL handle','Handle'); const nombre=campoCSV(f,'Nombre','Name','Título'); if(!nombre.trim())continue;
+   const key=slug.trim()||normalizarClave(nombre); let g=grupos.get(key); if(!g){g={key,slug,nombre,categoria:campoCSV(f,'Categorías','Categoria','Category')||'Varios',costo:numeroTiendanube(campoCSV(f,'Costo','Cost')),variantes:[],venta:0,mayorista:0};grupos.set(key,g);}
+   const opciones=[1,2,3].map(i=>campoCSV(f,`Valor de propiedad ${i}`,`Option ${i}`)).filter(Boolean);
+   const variante=opciones.length?opciones.join(' / '):'Único';
+   const stockRaw=campoCSV(f,'Stock','Stock de la variante'); const stock=stockRaw===''?0:numeroTiendanube(stockRaw);
+   const precio=numeroTiendanube(campoCSV(f,'Precio','Price')); const costo=numeroTiendanube(campoCSV(f,'Costo','Cost'));
+   if(!g.venta&&precio)g.venta=precio; if(!g.costo&&costo)g.costo=costo;
+   const existente=g.variantes.find(v=>v.modelo===variante); if(existente){existente.stock=stock;} else g.variantes.push({modelo:variante,stock,sku:campoCSV(f,'SKU'),precio});
+  }
+  const productos=[...grupos.values()]; if(!productos.length)return alert('No se encontraron nombres de productos válidos. Revisá que sea el CSV de productos de Tiendanube.');
+  const preview=productos.slice(0,8).map(p=>`${p.nombre} — ${p.variantes.length} variante(s) — $${p.venta}`).join('\n');
+  if(!confirm(`Tiendanube detectó ${productos.length} productos y ${productos.reduce((n,p)=>n+p.variantes.length,0)} variantes.\n\nMuestra:\n${preview}\n\nSe actualizarán los existentes por identificador URL o nombre, sin borrar fotos ni productos ausentes. ¿Continuar?`))return;
+  let creados=0,actualizados=0;
+  for(const p of productos){
+   const old=todasLasFundas.find(x=>(p.slug&&normalizarClave(x.tiendanubeSlug||x.slug||'')===normalizarClave(p.slug))||normalizarClave(x.nombre)===normalizarClave(p.nombre));
+   const data={nombre:p.nombre,categoria:p.categoria,costo:p.costo,venta:p.venta,stockPorModelo:p.variantes.map(v=>({modelo:v.modelo,stock:v.stock,sku:v.sku||'',precio:v.precio||0})),sinModelo:p.variantes.length<=1,tiendanubeSlug:p.slug||p.key,fuente:'tiendanube'};
+   if(old){ await updateDoc(doc(db,'fundas',old.id),{...data,fotos:old.fotos||[],foto:old.foto||'',mayorista:old.mayorista||0,orden:old.orden??0});actualizados++; }
+   else { await addDoc(collection(db,'fundas'),{...data,mayorista:0,fotos:[],orden:todasLasFundas.length+creados});creados++; }
+  }
+  alert(`Importación completada.\nNuevos: ${creados}\nActualizados: ${actualizados}\nNo se eliminaron productos ni fotos.`); evento.target.value=''; await cargarFundas();
+ }catch(err){console.error('Error importando Tiendanube',err);alert('No se pudo leer el archivo. Usá el CSV exportado desde Productos > Exportar e importar.');}};
+ if(/\.csv$/i.test(archivo.name))lector.readAsArrayBuffer(archivo);else lector.readAsArrayBuffer(archivo);
 }
 
 // ==========================================================================
@@ -1714,6 +1589,16 @@ async function guardarFunda() {
   }
 }
 
+async function borrarProductosSeleccionados() {
+ if(!esAdmin) return alert('Solo el personal autorizado puede borrar productos.');
+ const ids=[...document.querySelectorAll('.seleccionar-producto-borrar:checked')].map(x=>x.value);
+ if(!ids.length)return alert('Seleccioná primero los productos que querés borrar.');
+ if(!confirm(`Vas a eliminar ${ids.length} productos de forma permanente. Esta acción no se puede deshacer. ¿Continuar?`))return;
+ try { for(let i=0;i<ids.length;i+=400){const batch=writeBatch(db);ids.slice(i,i+400).forEach(id=>batch.delete(doc(db,'fundas',id)));await batch.commit();}
+ alert(`Se eliminaron ${ids.length} productos.`);await cargarFundas();
+ }catch(e){console.error(e);alert('No se pudieron borrar todos los productos. Revisá permisos de Firebase.');}
+}
+
 async function eliminarFunda(id) {
   if (!esAdmin) return;
   if (confirm("¿Seguro que deseas eliminar este artículo?")) {
@@ -2155,7 +2040,8 @@ function renderizarFundas(fundasA_Mostrar, textoBuscado = "") {
 
     // ACCIONES
     let bloqueAcciones = esAdmin ? `
-        <div style="margin-top: 15px; display: flex; gap: 5px; order: 10;">
+        <div style="margin-top: 15px; display: flex; gap: 5px; order: 10; flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:5px;width:100%;font-size:12px"><input type="checkbox" class="seleccionar-producto-borrar" value="${f.id}" style="width:auto"> Seleccionar para borrado múltiple</label>
           <button onclick="abrirEditarFunda('${f.id}')" style="flex:1;">✏️ Editar</button>
           <button onclick="eliminarFunda('${f.id}')" style="background:#ff3b30; flex:1;">🗑️ Eliminar</button>
         </div>` : `
