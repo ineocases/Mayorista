@@ -223,6 +223,27 @@ document.addEventListener("DOMContentLoaded", () => {
   if(document.getElementById("btnGuardarCategoria")) document.getElementById("btnGuardarCategoria").onclick = crearNuevaCategoria;
 
   if(document.getElementById("btnImportarExcel")) document.getElementById("btnImportarExcel").onclick = () => document.getElementById("inputExcel").click();
+  const btnBorrarTodoCatalogo = document.getElementById("btnBorrarTodoCatalogo");
+  if (btnBorrarTodoCatalogo) btnBorrarTodoCatalogo.onclick = async () => {
+    if (!todasLasFundas.length) return alert("El catálogo ya está vacío.");
+    const confirmacion = prompt(`Vas a eliminar ${todasLasFundas.length} publicaciones del catálogo. Esta acción no se puede deshacer. Escribí BORRAR TODO para confirmar:`);
+    if (confirmacion !== "BORRAR TODO") return;
+    btnBorrarTodoCatalogo.disabled = true;
+    try {
+      // Firestore batch limit: delete in groups of 400.
+      for (let i=0; i<todasLasFundas.length; i+=400) {
+        const lote = writeBatch(db);
+        todasLasFundas.slice(i,i+400).forEach(p => lote.delete(doc(db,"fundas",p.id)));
+        await lote.commit();
+      }
+      alert("Se eliminaron todas las publicaciones del catálogo.");
+      location.reload();
+    } catch (error) {
+      console.error("Error al borrar catálogo:", error);
+      alert("No se pudo borrar todo el catálogo. Revisá los permisos de Firebase.");
+      btnBorrarTodoCatalogo.disabled = false;
+    }
+  };
   if(document.getElementById("inputExcel")) document.getElementById("inputExcel").onchange = procesarImportacionExcel;
   if(document.getElementById("btnBorrarSeleccionados")) document.getElementById("btnBorrarSeleccionados").onclick = borrarProductosSeleccionados;
 
@@ -527,7 +548,7 @@ onAuthStateChanged(auth, async (user) => {
       if (esAdmin) {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "📱 Cambiar a Cliente";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "inline-block";
-        if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";
+        if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";\n        if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "inline-block";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "inline-block"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "flex";
         if(btnGestorCategorias) btnGestorCategorias.style.display = "block";
@@ -537,7 +558,7 @@ onAuthStateChanged(auth, async (user) => {
       } else {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "🔐 Cambiar a Admin";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "none";
-        if(btnImportarExcel) btnImportarExcel.style.display = "none";
+        if(btnImportarExcel) btnImportarExcel.style.display = "none";\n        if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "none";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "none"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "none";
         if(btnGestorCategorias) btnGestorCategorias.style.display = "none";
@@ -951,9 +972,26 @@ function procesarImportacionExcel(evento) {
   else { const libro=XLSX.read(new Uint8Array(e.target.result),{type:'array'}); filas=XLSX.utils.sheet_to_json(libro.Sheets[libro.SheetNames[0]],{defval:''}).map(o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[normalizarClave(k),String(v??'')]))); }
   if(!filas.length) return alert('El archivo no contiene filas de productos.');
   const grupos=new Map();
-  for(const f of filas){ const slug=campoCSV(f,'Identificador de URL','URL handle','Handle'); const nombre=campoCSV(f,'Nombre','Name','Título'); if(!nombre.trim())continue;
-   const key=slug.trim()||normalizarClave(nombre); let g=grupos.get(key); if(!g){g={key,slug,nombre,categoria:campoCSV(f,'Categorías','Categoria','Category')||'Varios',costo:numeroTiendanube(campoCSV(f,'Costo','Cost')),variantes:[],venta:0,mayorista:0};grupos.set(key,g);}
-   const opciones=[1,2,3].map(i=>campoCSV(f,`Valor de propiedad ${i}`,`Option ${i}`)).filter(Boolean);
+  // Tiendanube deja vacíos el slug y el nombre en las filas siguientes de un mismo producto.
+  // Heredarlos evita crear productos sin nombre y permite reunir todas sus variantes.
+  let ultimoSlug='', ultimoNombre='', ultimoCategoria='';
+  for(const f of filas){
+   let slug=campoCSV(f,'Identificador de URL','URL handle','Handle').trim();
+   let nombre=campoCSV(f,'Nombre','Name','Título').trim();
+   if(slug) ultimoSlug=slug; else slug=ultimoSlug;
+   if(nombre) ultimoNombre=nombre; else nombre=ultimoNombre;
+   let categoria=campoCSV(f,'Categorías','Categoria','Category').trim();
+   if(categoria) ultimoCategoria=categoria; else categoria=ultimoCategoria;
+   if(!nombre) continue;
+   const key=slug||normalizarClave(nombre);
+   let g=grupos.get(key);
+   if(!g){g={key,slug,nombre,categoria:categoria||'Varios',costo:numeroTiendanube(campoCSV(f,'Costo','Cost')),variantes:[],venta:0,mayorista:0};grupos.set(key,g);}
+   // Usar los nombres y valores de las propiedades; solo los valores no siempre identifican bien una variante.
+   const opciones=[1,2,3].map(i=>{
+     const valor=campoCSV(f,`Valor de propiedad ${i}`,`Option ${i}`);
+     const propiedad=campoCSV(f,`Nombre de propiedad ${i}`,`Option name ${i}`);
+     return valor.trim() ? (propiedad.trim() ? `${propiedad.trim()}: ${valor.trim()}` : valor.trim()) : '';
+   }).filter(Boolean);
    const variante=opciones.length?opciones.join(' / '):'Único';
    const stockRaw=campoCSV(f,'Stock','Stock de la variante'); const stock=stockRaw===''?0:numeroTiendanube(stockRaw);
    const precio=numeroTiendanube(campoCSV(f,'Precio','Price')); const costo=numeroTiendanube(campoCSV(f,'Costo','Cost'));
