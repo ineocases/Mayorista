@@ -548,7 +548,8 @@ onAuthStateChanged(auth, async (user) => {
       if (esAdmin) {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "📱 Cambiar a Cliente";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "inline-block";
-        if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";\n        if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "inline-block";
+        if(btnImportarExcel) btnImportarExcel.style.display = "inline-block";
+        if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "inline-block";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "inline-block"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "flex";
         if(btnGestorCategorias) btnGestorCategorias.style.display = "block";
@@ -558,7 +559,8 @@ onAuthStateChanged(auth, async (user) => {
       } else {
         if(btnCambiarRol) btnCambiarRol.innerHTML = "🔐 Cambiar a Admin";
         if(document.getElementById("btnNuevaFunda")) document.getElementById("btnNuevaFunda").style.display = "none";
-        if(btnImportarExcel) btnImportarExcel.style.display = "none";\n        if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "none";
+        if(btnImportarExcel) btnImportarExcel.style.display = "none";
+        if(document.getElementById("btnBorrarTodoCatalogo")) document.getElementById("btnBorrarTodoCatalogo").style.display = "none";
         const btnBorrar = document.getElementById("btnBorrarSeleccionados"); if(btnBorrar) btnBorrar.style.display = "none"; 
         if(document.getElementById("btnAsistente")) document.getElementById("btnAsistente").style.display = "none";
         if(btnGestorCategorias) btnGestorCategorias.style.display = "none";
